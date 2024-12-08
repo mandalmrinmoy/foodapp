@@ -1,5 +1,7 @@
 const express=require("express")
 const router=express.Router()
+const bcrypt=require("bcryptjs")
+const JWT=require("jsonwebtoken")
 const Person=require('../models/Person')
 
 router.post('/signup',async (req,res)=>{
@@ -14,10 +16,19 @@ router.post('/signup',async (req,res)=>{
     if(emailId){
         return res.status(404).json({message:"Email already registered please login"})
     }
+    const userId=await Person.findOne({username:newPersonData.username})
+    if(userId){
+        return res.status(404).json({message:"Username already used"})
+    }
+    //hashing password
+    let salt=bcrypt.genSaltSync(10)
+    const hashPassword= await bcrypt.hash(newPersonData.password,salt)
+
     const newPerson=new Person(newPersonData)
+    newPerson.password=hashPassword
     const response=await newPerson.save()
     
-    console.log("Successfully registered!!!")
+    console.log("congratulations!! Your profile created successfully")
     res.status(200).json({response:response})
     }catch(err){
         console.log(err)
@@ -33,11 +44,16 @@ router.post('/login',async (req,res)=>{
             return res.status(404).json({message:"Please provide Email and Password"})
         }
         // chaeck user
-        const user= await Person.findOne({email:email,password:password})
+        const user= await Person.findOne({email:email})
         if(!user){
-            return res.status(404).json({message:"Enter the Valid Email Id or Password"})
+            return res.status(404).json({message:"User not found"})
         }
-        res.status(200).json({message:"Login successfully!!",user})
+        const isMatch=bcrypt.compare(password,user.password)
+        if(!isMatch){
+            return res.status(404).json({message:"Invalid password"})
+        }
+       const token=JWT.sign({id:user._id},process.env.JWT_KEY,{expiresIn:'1d'})
+        res.status(200).json({message:"Login successfully!!",user,token})
     }catch(err){
         console.log(err)
         res.status(500).json({Error:"internal error!!"})
